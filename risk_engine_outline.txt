@@ -1,0 +1,87 @@
+risk_engine/
+├── data/            # raw CSV, processed signals.jsonl
+├── ingest.py
+├── preprocess.py
+├── sentiment.py
+├── events.py
+├── impact.py
+├── pipeline.py      # runs all stages in order
+├── api.py           # FastAPI service
+└── evaluate.py
+
+tools for each step: 
+1. Ingestion:	Pull headlines and article => RSS via feedparser, or a Kaggle CSV to start
+2. Cleaning:	Remove noise, deduplicate, find companies and countries	=> spaCy
+3. Sentiment:	Score -1 to +1	=> ProsusAI/finbert via Hugging Face transformers
+4. Event classification:	Label the event type	=> Zero-shot classifier (facebook/bart-large-mnli), plus keyword rules
+5. Impact score	Severity 1-10: 	A transparent formula you write
+6. Output:	Make signals available	JSONL file, then FastAPI
+================================================================================
+Stage 1: Data ingestion
+
+Goal: get text into one consistent format.
+Start with a static CSV of financial headlines (Kaggle has several). It's reproducible and has no API limits.
+Add a live RSS feed afterward (Yahoo Finance, Reuters, CNBC).
+Every record uses the same schema: id, timestamp, source, headline, body.
+-------------------------------------------------------------------------------
+Stage 2: Cleaning and extraction
+
+Goal: make the text usable and pull out who and what it's about.
+Remove HTML, duplicates, and empty rows.
+Run spaCy NER to extract companies, countries, and organizations.
+Map company names to tickers (a simple dictionary for your 10-20 stocks is enough).
+Don't over-clean for FinBERT. It handles raw sentences well, so avoid stripping stopwords or negations.
+-------------------------------------------------------------------------------
+
+Stage 3: Sentiment (FinBERT)
+
+Goal: a score per article.
+FinBERT outputs probabilities for positive, negative, and neutral.
+Convert to one number: sentiment = P(positive) - P(negative), which gives a score from -1 to +1.
+Keep the label and confidence too.
+-------------------------------------------------------------------------------
+
+Stage 4: Event classification
+
+Goal: tag each article with one of your categories: Geopolitical, Macroeconomic, Credit Event, M&A, Product Launch.
+
+Use a two-layer approach:
+
+Keyword rules first (cheap and explainable): "sanctions", "war" → Geopolitical; "rate hike", "inflation" → Macroeconomic; "downgrade", "default" → Credit Event; "acquire", "merger" → M&A; "launches", "unveils" → Product Launch.
+Zero-shot model as fallback when no keywords match, or to confirm the rule.
+Save a confidence value alongside the label.
+-------------------------------------------------------------------------------
+
+Stage 5: Impact score (1-10)
+
+Goal: estimate potential market severity.
+There's no labeled dataset for "severity", so use a transparent formula and say so in your documentation. For example:
+
+impact = base_severity(event_type)          # e.g. Credit Event=7, Product Launch=3
+       + 2 × |sentiment|                    # stronger sentiment, higher impact
+       + intensity_bonus                    # words like "collapse", "default", "invasion"
+       + coverage_bonus                     # same story across several sources
+→ clipped to 1-10
+Tune the weights by looking at 30-50 examples and checking that the scores feel sensible.
+-------------------------------------------------------------------------------
+
+Stage 6: Output
+
+Goal: make signals available to the downstream modules.
+Write each processed record to signals.jsonl.
+Wrap it in a small FastAPI app with /signals and /signals/latest.
+
+Final record shape:
+json
+{
+  "id": "n_00123",
+  "timestamp": "2026-09-30T14:02:00Z",
+  "headline": "...",
+  "entities": ["Russia", "Brent crude"],
+  "tickers": [],
+  "sentiment": -0.72,
+  "event_type": "Geopolitical",
+  "event_confidence": 0.84,
+  "impact_score": 8.5
+}
+-------------------------------------------------------------------------------

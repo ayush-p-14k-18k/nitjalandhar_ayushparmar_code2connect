@@ -1,0 +1,45 @@
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+venv/
+.venv/
+risk/
+
+# Environment variables and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.local
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+
+# Generated data and backups
+code/data_backup/
+
+# Generated/cache files
+code/data/zs_cache.json
+
+# Private/local images
+images/
+
+# Dataset archives
+*.zip
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Large raw transaction dataset
+code/data/transactions_data.csv
+
+# Private project notes / submission credentials
+idea and framework.txt
